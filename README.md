@@ -104,3 +104,30 @@ Design -> Develop -> Evaluate -> Deploy
 - There will be a "black box test" for with a list of questions and expected answers.
 - These control answers will be evaluated against model output and a judge will emit a score
 - You will want to test for apporpriate tool calls based on context
+
+**Runtime**
+
+- Agent Engine on Vertex AI
+- Comes with tracing and metrics by default
+- Basically just a container running on cloud run, with out of the box telemetry included
+
+**MCP**
+
+- MCP is a way to secure tools
+- Before MCP, we used to write the functions or tools in the same module as the agent or LLM.
+- Now we can add tools via an MCP server, either locally or remotely, giving access to existing APIs, vendor tools, etc.
+- exposes "list tools" and "call tools" methods for the agent (client) to call
+
+**A2A**
+
+- A protocol to allow Agents to easily communicate with each other
+- Agents could be using different models, deployed in different DCs or servers, etc.
+- This allows you to build an "Agent mesh"
+- Agents come with an "Agent card" that includes a name, a provider (URL/address) capabilities(streaming, notifications, etc.), skills, and an authentication scheme
+- Skills are a description with an input and output scheme (say tools)
+- A2A servers exist to help with Agent discovery
+  - the server exposes a "Get agent cards" to let a caller know what agents are available and what they can do, the number of agents, etc.
+  - it also comes with a task registry that agents can pick up
+  - The server is called from a workflow agent or orchestration agent
+  - The A2A protocol is mostly about the communication schema to ensure standardization. It's not an implementation! Just a schema
+  - Agent engine doesn't support acting as an A2A server as of right now. So far, only can deploy a server as a container
