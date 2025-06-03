@@ -364,5 +364,65 @@ gcloud run deploy ${SERVICE_NAME} \
   --set-env-vars="GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}" \
   --project=${PROJECT_ID} \
   --min-instances=1
-
 ```
+
+Run the agent through the adk
+
+```shell
+. ~/instavibe-bootstrap/set_env.sh
+source ~/instavibe-bootstrap/env/bin/activate
+cd  ~/instavibe-bootstrap/agents
+sed -i "s|^\(O\?GOOGLE_CLOUD_PROJECT\)=.*|GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|" ~/instavibe-bootstrap/agents/planner/.env
+adk web
+```
+
+ADK Components
+While the ADK Dev UI is great for interactive testing, we often need to run our agents programmatically, perhaps as part of a larger application or backend service. To understand how this works, let's look at some core ADK concepts related to runtime and context management.
+
+Meaningful, multi-turn conversations require agents to understand context – recalling what's been said and done to maintain continuity. ADK provides structured ways to manage this context through Session, State, and Memory:
+
+Session: When a user starts interacting with an agent, a Session is created. Think of it as the container for a single, specific chat thread. It holds a unique ID, the history of interactions (Events), the current working data (State), and metadata like the last update time.
+State: This is the agent's short-term, working memory within a single Session. It's a mutable dictionary where the agent can store temporary information needed to complete the current task (e.g., user preferences collected so far, intermediate results from tool calls).
+Memory: This represents the agent's potential for long-term recall across different sessions or access to external knowledge bases. While Session and State handle the immediate conversation, Memory (often managed by a MemoryService) allows an agent to retrieve information from past interactions or structured data sources, giving it a broader knowledge context. (Note: Our simple client uses in memory services for simplicity, meaning memory/state only persists while the script runs).
+Event: Every interaction within a Session (user message, agent response, tool use request, tool result, state change, error) is recorded as an immutable Event. This creates a chronological log, essentially the transcript and action history of the conversation.
+So, how are these managed when an agent runs? That's the job of the Runner.
+
+Runner: The Runner is the core execution engine provided by ADK. You define your agent and the tools it uses, and the Runner orchestrates the process of fulfilling a user's request. It manages the Session, handles the flow of Events, updates the State, invokes the underlying language model, coordinates tool calls, and potentially interacts with MemoryService. Think of it as the conductor making sure all the different parts work together correctly.
+We can use the Runner to run our agent as a standalone Python application, completely independent of the Dev UI.
+
+Model Context Protocol (MCP)
+The Model Context Protocol (MCP) is an open standard designed to standardize how AI applications like agents, connect with external data sources, tools, and systems. It aims to solve the problem of needing custom integrations for every AI application and data source combination by providing a universal interface. MCP utilizes a client-server architecture where MCP clients, residing within AI applications (hosts), manage connections to MCP servers. These servers are external programs that expose specific functionalities like accessing local data, interacting with remote services via APIs, or providing predefined prompts, allowing AI models to access current information and perform tasks beyond their initial training. This structure enables AI models to discover and interact with external capabilities in a standardized way, making integrations simpler and more scalable.
+
+MCP Server Implementation
+
+Now that we have the Python functions that perform the actions (calling the InstaVibe APIs), we need to build the MCP Server component. This server will expose these functions as "tools" according to the MCP standard, allowing MCP clients (like our agents) to discover and invoke them.
+
+An MCP Server typically implements two key functionalities:
+
+list_tools: responsible for allowing the client to discover the available tools on the server, providing metadata like their names, descriptions, and required parameters, often defined using JSON Schema
+call_tool: handles the execution of a specific tool requested by the client, receiving the tool's name and arguments and performing the corresponding action, such as in our case interacting with an API
+MCP servers are used to provide AI models with access to real-world data and actions, enabling tasks like sending emails, creating tasks in project management systems, searching databases, or interacting with various software and web services. While initial implementations often focused on local servers communicating via standard input/output (stdio) for simplicity, particularly in development or "studio" environments, the move towards remote servers utilizing protocols like HTTP with Server-Sent Events (SSE) makes more sense for broader adoption and enterprise use cases.
+
+The remote architecture, despite the added network communication layer, offers significant advantages: it allows multiple AI clients to share access to a single server, centralizes management and updates of tools, enhances security by keeping sensitive data and API keys on the server side rather than distributed across potentially many client machines, and decouples the AI model from the specifics of the external system integration, making the entire ecosystem more scalable, secure, and maintainable than requiring every AI instance to manage its own direct integrations
+
+MCP Client The MCP Client is a component that resides within an AI application or agent, acting as the interface between the AI model and one or more MCP Servers; in our implementation, this client will be integrated directly within our agent. This client's primary function is to communicate with MCP Servers to discover available tools via the list_tools function and subsequently request the execution of specific tools using the call_tool function, passing necessary arguments provided by the AI model or the agent orchestrating the call.
+
+In Google's ADK, a Workflow Agent doesn't perform tasks itself but orchestrates other agents, called sub-agents. This allows for modular design, breaking down complex problems into specialized components. ADK provides built-in workflow types like
+
+Sequential (step-by-step)
+Parallel (concurrent execution)
+and Loop (repeated execution)
+
+State and Callbacks for Loop Results
+
+In Google's ADK, State is a crucial concept representing the memory or working data of an agent during its execution. It's essentially a persistent context that holds information an agent needs to maintain across different steps, tool calls, or interactions. This state can store intermediate results, user information, parameters for subsequent actions, or any other data the agent needs to remember as it progresses through a task.
+
+Callbacks in ADK allow us to inject custom logic to be executed at specific points during an agent's lifecycle or in response to certain events, such as the completion of a tool call or before the agent finishes its execution. They provide a way to customize the agent's behavior and process results dynamically.
+
+The A2A protocol is an open standard specifically designed for interoperable communication between AI agents. While MCP focuses on agent-to-tool interaction, A2A focuses on agent-to-agent interaction. It allows agents to:
+
+Discover: Find other agents and learn their capabilities via standardized Agent Cards.
+Communicate: Exchange messages and data securely.
+Collaborate: Delegate tasks and coordinate actions to achieve complex goals.
+The A2A protocol facilitates this communication through mechanisms like "Agent Cards," which agents can use to advertise their capabilities and connection information.
+A2A utilizes familiar web standards (HTTP, SSE, JSON-RPC) and often employs a client-server model where one agent (client) sends tasks to another (remote agent/server). This standardization is key to building modular, scalable systems where agents developed independently can work together.
